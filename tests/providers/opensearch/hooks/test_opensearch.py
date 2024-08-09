@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from unittest import mock
+from unittest.mock import Mock
 
 import opensearchpy
 import pytest
@@ -25,9 +26,9 @@ from opensearchpy import Urllib3HttpConnection
 from airflow.exceptions import AirflowException
 from airflow.models import Connection
 from airflow.providers.opensearch.hooks.opensearch import OpenSearchHook
+from airflow.utils import db
 
 pytestmark = pytest.mark.db_test
-
 
 MOCK_SEARCH_RETURN = {"status": "test"}
 DEFAULT_CONN = opensearchpy.connection.http_requests.RequestsHttpConnection
@@ -74,3 +75,29 @@ class TestOpenSearchHook:
             open_search_conn_class=Urllib3HttpConnection,
         )
         assert hook_Urllib3.connection_class == Urllib3HttpConnection
+
+    @mock.patch("airflow.providers.opensearch.hooks.opensearch.OpenSearch")
+    def test_client_with_auth(self, mock_opensearch: Mock):
+        hook_default = OpenSearchHook(open_search_conn_id="opensearch_default", log_query=True)
+        _hook_client = hook_default.client
+
+        mock_opensearch.assert_called_once()
+        mock_opensearch_call = mock_opensearch.call_args_list[0]
+        assert mock_opensearch_call.kwargs["http_auth"] == ("test_user", "test")
+
+    @mock.patch("airflow.providers.opensearch.hooks.opensearch.OpenSearch")
+    def test_client_without_auth(self, mock_opensearch: Mock):
+        db.merge_conn(
+            Connection(
+                conn_id="opensearch_no_auth",
+                conn_type="opensearch",
+                host="myopensearch.com",
+            )
+        )
+
+        hook_no_auth = OpenSearchHook(open_search_conn_id="opensearch_no_auth", log_query=True)
+        _hook_client = hook_no_auth.client
+
+        mock_opensearch.assert_called_once()
+        mock_opensearch_call = mock_opensearch.call_args_list[0]
+        assert mock_opensearch_call.kwargs["http_auth"] is None
